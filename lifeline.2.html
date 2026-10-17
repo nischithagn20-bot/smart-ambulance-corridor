@@ -1,0 +1,626 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Smart Ambulance Corridor (Large Demo Map)</title>
+<style>
+  :root{--ink:#0e2230;--panel:#12303f;--line:#2a4d5e;--text:#e8f1f4;--mute:#9fb8c4;--amber:#ffb020}
+  *{box-sizing:border-box}
+  html,body{height:100%;margin:0;font-family:"Segoe UI",system-ui,Arial,sans-serif;background:var(--ink);color:var(--text)}
+  .app{display:grid;grid-template-columns:340px 1fr;height:100%}
+  aside{background:var(--panel);padding:16px 18px;overflow-y:auto;border-right:1px solid var(--line)}
+  h1{font:700 22px/1.15 "Segoe UI",Arial,sans-serif;margin:0 0 3px}
+  .sub{color:var(--mute);font-size:13px;margin:0 0 10px}
+  label{display:block;font-size:12px;color:var(--mute);margin:10px 0 4px}
+  select,button{width:100%;font:inherit;font-size:14px;padding:8px;border-radius:6px;border:1px solid var(--line);background:#0b2330;color:var(--text)}
+  button{cursor:pointer;font-weight:600;margin-top:7px}
+  button.primary{background:var(--amber);color:#2a1a00;border-color:var(--amber)}
+  button:disabled,select:disabled{opacity:.5;cursor:not-allowed}
+  button:focus-visible,select:focus-visible,input:focus-visible{outline:2px solid var(--amber);outline-offset:2px}
+  .row{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+  .chk{display:flex;gap:8px;align-items:center;margin:9px 0;font-size:14px}
+  .chk input{width:auto}.chk label{margin:0;color:var(--text);font-size:14px}
+  .stats{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}
+  .stat{border:1px solid var(--line);border-radius:6px;padding:6px 9px}
+  .stat.wide{grid-column:span 2}
+  .stat b{display:block;font-size:18px}
+  .stat span{font-size:11.5px;color:var(--mute)}
+  .status{margin-top:10px;padding:9px 11px;border-radius:6px;background:#0b2330;border-left:4px solid var(--amber);font-size:13.5px;min-height:42px}
+  #log{list-style:none;margin:8px 0 0;padding:0;font-size:12px;color:var(--mute);display:grid;gap:4px}
+  #log li{padding:4px 8px;border-radius:4px;background:#0b2330}
+  .legend{margin-top:12px;font-size:12.5px;color:var(--mute);display:grid;gap:6px}
+  .legend i{display:inline-block;width:26px;height:6px;border-radius:3px;margin-right:8px;vertical-align:middle}
+  main{position:relative;background:#ece8df;overflow:hidden}
+  svg#map{width:100%;height:100%;display:block;touch-action:none}
+  svg#map.t-pickup,svg#map.t-add,svg#map.t-reduce{cursor:crosshair}
+  svg#map.t-pan{cursor:grab}
+  .pin,.hosp{pointer-events:none}
+  svg#map.t-pickup .pin,svg#map.t-pickup .hosp{pointer-events:all;cursor:pointer}
+  .car{transition:opacity .5s}
+  .toolbar{position:absolute;left:50%;top:12px;transform:translateX(-50%);display:flex;gap:6px;align-items:center;background:#fffe;border:1px solid #c5ccd1;border-radius:10px;padding:6px;box-shadow:0 2px 8px #0002;max-width:calc(100% - 140px);flex-wrap:wrap;justify-content:center}
+  .toolbar button{width:auto;margin:0;padding:7px 11px;background:#fff;color:#1b2b34;border:1px solid #c5ccd1;font-size:13px}
+  .toolbar button[aria-pressed="true"]{background:#12303f;color:#fff;border-color:#12303f}
+  .toolbar label{display:flex;align-items:center;gap:6px;margin:0 4px;color:#33414a;font-size:12px}
+  .toolbar input{width:90px}
+  .tag{position:absolute;left:12px;bottom:12px;background:#fffd;border-radius:6px;padding:6px 10px;font-size:12px;color:#33414a;max-width:60%}
+  .zoom{position:absolute;right:12px;bottom:12px;display:grid;gap:6px;width:40px}
+  .zoom button{margin:0;padding:8px 0;background:#fff;color:#1b2b34;border:1px solid #c5ccd1;font-size:18px;line-height:1}
+  .compass{position:absolute;right:12px;top:12px;width:44px;height:44px;pointer-events:none}
+  .flow{animation:dash 1s linear infinite}
+  @keyframes dash{to{stroke-dashoffset:-28}}
+  .siren{animation:siren .6s steps(1) infinite}
+  @keyframes siren{0%{fill:#ef4444}50%{fill:#3b82f6}}
+  @media(prefers-reduced-motion:reduce){.flow,.siren{animation:none}.car{transition:none}}
+  @media(max-width:760px){.app{grid-template-columns:1fr;grid-template-rows:auto 66vh}.toolbar{max-width:calc(100% - 70px)}}
+.panel{margin-top:10px;padding:8px 10px;border:1px solid var(--line);border-radius:6px;font-size:12.5px;color:var(--mute);line-height:1.45}
+.panel b{color:var(--text)}.panel:empty{display:none}.cg{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin:6px 0}.cg div{background:#0b2330;border-radius:5px;padding:5px 7px}
+svg#map.night{filter:brightness(.5) contrast(1.1) saturate(.8)}
+.msg{animation:fadeout 1.7s forwards}@keyframes fadeout{0%,60%{opacity:1}100%{opacity:0}}
+#mini{position:absolute;left:12px;bottom:62px;width:190px;border:2px solid #fff;border-radius:6px;box-shadow:0 2px 8px #0004;background:#ece8df;cursor:pointer}
+</style>
+</head>
+<body>
+<div class="app">
+  <aside>
+    <h1>Smart Ambulance Corridor</h1>
+    <p class="sub">Live traffic-aware routing with IoT signal control</p>
+
+    <label for="pickSel">Pickup point (patient location)</label>
+    <select id="pickSel"></select>
+    <label for="hosp">Destination hospital</label>
+    <select id="hosp"></select>
+
+    <button id="btnGo" class="primary">Start ambulance</button>
+    <div class="row"><button id="btnReset">Reset ambulance</button><button id="btnRandom">Random traffic</button></div>
+    <button id="btnClear">Clear all traffic</button>
+
+    <div class="chk"><input type="checkbox" id="preempt" checked><label for="preempt">IoT signal pre-emption (green corridor)</label></div>
+    <div class="chk"><input type="checkbox" id="follow" checked><label for="follow">Camera follows the ambulance</label></div>
+    <label for="sev">Patient severity (green corridor length)</label>
+    <select id="sev"><option value="0">Stable: short corridor</option><option value="1" selected>Serious: normal corridor</option><option value="2">Critical: long corridor</option></select>
+    <label for="ptype">Patient type (hospital match, used by Auto)</label>
+    <select id="ptype"><option value="general">General</option><option value="cardiac">Cardiac</option><option value="trauma">Trauma</option><option value="paediatric">Paediatric</option></select>
+    <div class="chk"><input type="checkbox" id="pred" checked><label for="pred">Predictive routing (use traffic forecast)</label></div>
+    <div class="chk"><input type="checkbox" id="fail"><label for="fail">Inject a signal failure on route</label></div>
+    <div class="chk"><input type="checkbox" id="night"><label for="night">Night mode</label></div>
+    <div class="chk"><input type="checkbox" id="snd"><label for="snd">Siren sound</label></div>
+    <button id="btnCmp">Compare with / without system</button>
+    <button id="btnDemo">Run demo script</button>
+
+    <div class="stats">
+      <div class="stat wide"><b id="sDest">--</b><span>Destination</span></div>
+      <div class="stat"><b id="sFast">--</b><span>Fastest route ETA</span></div>
+      <div class="stat"><b id="sShort">--</b><span>Shortest-distance ETA</span></div>
+      <div class="stat"><b id="sSpeed">0</b><span>Speed (km/h)</span></div>
+      <div class="stat"><b id="sSig">0</b><span>Signals cleared</span></div>
+      <div class="stat"><b id="sWait">0 s</b><span>Waited at red</span></div>
+      <div class="stat"><b id="sTime">0 s</b><span>Elapsed</span></div>
+    </div>
+
+    <div class="status" id="status"></div>
+    <ul id="log"></ul>
+
+    <div class="panel" id="disp"></div>
+    <div class="panel" id="cmp"></div>
+    <div class="panel"><b>Predicted vs actual ETA</b><div id="pva">Start a trip to see how the ETA moves.</div><svg id="spark" viewBox="0 0 300 70" style="width:100%;height:70px"></svg></div>
+    <div class="panel"><b>Dashboard</b><div id="dash"></div></div>
+    <div class="legend">
+      <div><i style="width:60px;background:linear-gradient(90deg,#22c55e,#f59e0b,#ef4444)"></i>Traffic density: low to high</div>
+      <div><i style="background:#2563eb"></i>Fastest route (updates as traffic changes)</div>
+      <div><i style="background:#7b8a94"></i>Shortest route by distance</div>
+      <div><i style="background:#ef4444;opacity:.5"></i>Forecast jam zone (dashed circle)</div>
+    </div>
+  </aside>
+  <main>
+    <svg id="map" class="t-pickup" viewBox="0 0 2300 1450" preserveAspectRatio="xMidYMid meet" aria-label="Large city map"></svg>
+    <div class="toolbar" role="toolbar" aria-label="Map tools">
+      <button data-tool="pickup" aria-pressed="true">Set pickup</button>
+      <button data-tool="add" aria-pressed="false">Add traffic</button>
+      <button data-tool="reduce" aria-pressed="false">Reduce traffic</button>
+      <button data-tool="pan" aria-pressed="false">Pan</button>
+      <label>Brush <input type="range" id="brush" min="40" max="240" value="100" aria-label="Brush size"></label>
+    </div>
+    <div class="tag" id="hint"></div>
+    <svg id="mini" viewBox="0 0 2300 1450" aria-label="Mini-map"><rect width="2300" height="1450" fill="#ece8df"/><path d="M 1010 -40 C 900 260, 1180 480, 1060 700 S 930 1120, 1140 1500" fill="none" stroke="#a7d3ee" stroke-width="70"/><g id="miniH"></g><polyline id="miniR" fill="none" stroke="#2563eb" stroke-width="14"/><circle id="miniA" r="30" fill="#dc2626"/><rect id="miniV" fill="none" stroke="#111" stroke-width="10"/></svg>
+    <svg class="compass" viewBox="0 0 44 44"><circle cx="22" cy="22" r="20" fill="#fffd" stroke="#c5ccd1"/><path d="M22 6l6 16h-12z" fill="#d33"/><path d="M22 38l6-16h-12z" fill="#7b8a94"/><text x="22" y="17" font-size="8" text-anchor="middle" fill="#fff" font-weight="700">N</text></svg>
+    <div class="zoom"><button id="zIn" aria-label="Zoom in">+</button><button id="zOut" aria-label="Zoom out">&minus;</button><button id="zFit" aria-label="Fit whole map" style="font-size:12px">Fit</button></div>
+  </main>
+</div>
+
+<script>
+const NS="http://www.w3.org/2000/svg",COLS=22,ROWS=14,VW=2300,VH=1450,BASE=150,MAXCARS=1000;
+const ARTROWS=[2,5,8,11],ROWNAME={2:"MG Road",5:"Ring Road",8:"Station Road",11:"Outer Ring Road"};
+const ARTCOLS=[3,7,14,18],COLNAME={3:"Park Avenue",7:"Lake Road",14:"Temple Street",18:"Airport Road"};
+const $=id=>document.getElementById(id),svg=$("map");
+function el(tag,attrs,parent){const e=document.createElementNS(NS,tag);for(const k in attrs)e.setAttribute(k,attrs[k]);(parent||svg).appendChild(e);return e}
+function rng(seed){return()=>{seed|=0;seed=seed+0x6D2B79F5|0;let t=Math.imul(seed^seed>>>15,1|seed);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296}}
+const R=rng(41),lerp=(a,b,t)=>a+(b-a)*t,f1=n=>n.toFixed(1),clamp=(v,a,b)=>Math.min(b,Math.max(a,v));
+
+/* ---------- river ---------- */
+const RIVER_D="M 1010 -40 C 900 260, 1180 480, 1060 700 S 930 1120, 1140 1500";
+const rp=el("path",{d:RIVER_D,fill:"none",stroke:"none"});
+const riverPts=[];{const L=rp.getTotalLength();for(let k=0;k<=120;k++){const p=rp.getPointAtLength(L*k/120);riverPts.push({x:p.x,y:p.y})}}
+function riverDist(x,y){let m=1e9,b=null;riverPts.forEach(p=>{const d=Math.hypot(p.x-x,p.y-y);if(d<m){m=d;b=p}});return{d:m,p:b}}
+function segInt(a,b,c,d){const s=(p,q,r)=>(q.x-p.x)*(r.y-p.y)-(q.y-p.y)*(r.x-p.x);return s(a,b,c)*s(a,b,d)<0&&s(c,d,a)*s(c,d,b)<0}
+function crossesRiver(A,B){for(let k=0;k<riverPts.length-1;k++)if(segInt(A,B,riverPts[k],riverPts[k+1]))return true;return false}
+
+/* ---------- city graph ---------- */
+const nodes=[],edges=[],adj=[];
+for(let j=0;j<ROWS;j++)for(let i=0;i<COLS;i++){
+  let x=70+i*100+(R()-.5)*22,y=60+j*98+(R()-.5)*18;
+  for(let t=0;t<3;t++){const r=riverDist(x,y);if(r.d<50)x+=(x>=r.p.x?1:-1)*(54-r.d)}
+  nodes.push({i,j,x,y});adj.push([]);
+}
+const id=(i,j)=>j*COLS+i;
+function addEdge(a,b){
+  const A=nodes[a],B=nodes[b],hor=A.j===B.j,ver=A.i===B.i,cross=crossesRiver(A,B);
+  if(cross&&!(hor&&ARTROWS.includes(A.j)))return;
+  const art=(hor&&ARTROWS.includes(A.j))||(ver&&ARTCOLS.includes(A.i));
+  const e={a,b,len:Math.hypot(A.x-B.x,A.y-B.y),dens:0,want:0,art,bridge:cross,mul:art?1.35:1,mid:{x:(A.x+B.x)/2,y:(A.y+B.y)/2},_c:[]};
+  edges.push(e);adj[a].push({to:b,e});adj[b].push({to:a,e});
+}
+for(let j=0;j<ROWS;j++)for(let i=0;i<COLS;i++){
+  if(i<COLS-1)addEdge(id(i,j),id(i+1,j));
+  if(j<ROWS-1)addEdge(id(i,j),id(i,j+1));
+  if(i<COLS-1&&j<ROWS-1&&R()<.12)addEdge(id(i,j),id(i+1,j+1));
+}
+function connected(skip){const seen=new Set([0]),q=[0];while(q.length){const n=q.pop();adj[n].forEach(o=>{if(o.e!==skip&&!seen.has(o.to)){seen.add(o.to);q.push(o.to)}})}return seen.size===nodes.length}
+for(let k=edges.length-1;k>=0;k--){
+  const e=edges[k],A=nodes[e.a],B=nodes[e.b];
+  const border=(A.i===0&&B.i===0)||(A.i===COLS-1&&B.i===COLS-1)||(A.j===0&&B.j===0)||(A.j===ROWS-1&&B.j===ROWS-1);
+  if(!border&&!e.art&&!e.bridge&&R()<.12&&connected(e)){adj[e.a]=adj[e.a].filter(o=>o.e!==e);adj[e.b]=adj[e.b].filter(o=>o.e!==e);edges.splice(k,1)}
+}
+/* density -> speed, colour, car target */
+const fac=d=>Math.max(.1,1-.9*d),spd=e=>BASE*e.mul*fac(e.dens);
+const ZN=nodes[id(14,4)],ZONE={x:ZN.x,y:ZN.y,r:230,start:1e9,on:false};
+edges.forEach(e=>e.zw=Math.max(0,.9*(1-segDist(ZONE.x,ZONE.y,e)/ZONE.r)));
+const fdT=(e,t)=>t>=ZONE.start?Math.max(e.dens,e.zw):e.dens,fd=(e,t)=>$("pred").checked?fdT(e,t):e.dens;
+const spdAt=(e,t)=>BASE*e.mul*fac(fd(e,t)),spdT=(e,t)=>BASE*e.mul*fac(fdT(e,t));
+const CG=[34,197,94],CA=[245,158,11],CR=[239,68,68];
+function densColor(d){const mix=(a,b,t)=>a.map((v,i)=>Math.round(v+(b[i]-v)*t));return`rgb(${d<.5?mix(CG,CA,d/.5):mix(CA,CR,Math.min(1,(d-.5)/.35))})`}
+const wantOf=e=>Math.round(e.len/110*(.15+5.5*e.dens));
+const edgeBetween=(a,b)=>adj[a].find(o=>o.to===b).e;
+function segDist(px,py,e){const A=nodes[e.a],B=nodes[e.b],dx=B.x-A.x,dy=B.y-A.y,t=clamp(((px-A.x)*dx+(py-A.y)*dy)/(dx*dx+dy*dy),0,1);return Math.hypot(px-(A.x+dx*t),py-(A.y+dy*t))}
+
+/* ---------- ground, blocks, buildings ---------- */
+el("rect",{x:-300,y:-300,width:VW+600,height:VH+600,fill:"#ece8df"});
+const LAND=[{i:4,j:2,n:"City Mall",f:"#f2cfa9",ic:"🛍"},{i:5,j:6,n:"Railway Station",f:"#cfc4e6",ic:"🚆"},{i:14,j:3,n:"University",f:"#e3d8b2",ic:"🎓"},{i:2,j:8,n:"Stadium",f:"#c5e5bf",ic:"🏟",oval:1},{i:16,j:7,n:"Tech Park",f:"#bcd3ea",ic:"🏢"},{i:19,j:1,n:"Airport Terminal",f:"#d6dde3",ic:"✈"},{i:7,j:10,n:"Old Town Market",f:"#f0d9d0",ic:"🛒"},{i:12,j:11,n:"Green Residency",f:"#d3e8c9",ic:"🏘"}];
+const BCOL=["#d7d2cb","#cfc9c0","#e2ddd5","#c7c1b8","#dcd6d0"],bPaths=BCOL.map(()=>"");let shadow="";
+const gBlocks=el("g",{});
+const poly=q=>"M"+q.map(p=>f1(p[0])+","+f1(p[1])).join("L")+"Z";
+function quadPt(q,u,v){const t=[lerp(q[0].x,q[1].x,u),lerp(q[0].y,q[1].y,u)],b=[lerp(q[3].x,q[2].x,u),lerp(q[3].y,q[2].y,u)];return[lerp(t[0],b[0],v),lerp(t[1],b[1],v)]}
+for(let j=0;j<ROWS-1;j++)for(let i=0;i<COLS-1;i++){
+  const c4=[nodes[id(i,j)],nodes[id(i+1,j)],nodes[id(i+1,j+1)],nodes[id(i,j+1)]];
+  const cx=(c4[0].x+c4[1].x+c4[2].x+c4[3].x)/4,cy=(c4[0].y+c4[1].y+c4[2].y+c4[3].y)/4;
+  if(riverDist(cx,cy).d<64)continue;
+  const q=c4.map(p=>({x:lerp(p.x,cx,.17),y:lerp(p.y,cy,.17)}));
+  const lm=LAND.find(l=>l.i===i&&l.j===j),r=R();
+  if(lm){
+    if(lm.oval){el("ellipse",{cx,cy,rx:38,ry:27,fill:lm.f,stroke:"#8fbf88","stroke-width":2},gBlocks);el("ellipse",{cx,cy,rx:27,ry:17,fill:"#8cc784",stroke:"#fff","stroke-width":1.5},gBlocks)}
+    else{el("path",{d:poly(q.map(p=>[p.x,p.y])),fill:lm.f,stroke:"#b6aa95","stroke-width":1.5},gBlocks);
+      const s=[[.2,.2],[.8,.2],[.8,.8],[.2,.8]].map(p=>quadPt(q,p[0],p[1]));el("path",{d:poly(s),fill:"#fff8",stroke:"#9a8f7a","stroke-width":1},gBlocks)}
+    const t1=el("text",{x:cx,y:cy+2,"text-anchor":"middle","font-size":18},gBlocks);t1.textContent=lm.ic;
+    const t2=el("text",{x:cx,y:cy+20,"text-anchor":"middle","font-size":10.5,"font-weight":600,fill:"#3b3b3b","paint-order":"stroke",stroke:"#fffc","stroke-width":3},gBlocks);t2.textContent=lm.n;
+  }else if(r<.17){
+    el("path",{d:poly(q.map(p=>[p.x,p.y])),fill:"#c4e3b8",stroke:"#a9d19b","stroke-width":1.5},gBlocks);
+    if(R()<.35){const m=quadPt(q,.5,.5);el("ellipse",{cx:m[0],cy:m[1],rx:15,ry:9,fill:"#a9d3ee",stroke:"#8fbfdc"},gBlocks)}
+    for(let n=0;n<9;n++){const m=quadPt(q,.1+R()*.8,.1+R()*.8);el("circle",{cx:m[0],cy:m[1],r:3.5+R()*3,fill:n%2?"#7fbf73":"#6aaa62",stroke:"#5a9553","stroke-width":.6},gBlocks)}
+  }else{
+    const nx=2+Math.floor(R()*2),ny=2+(R()<.3?1:0),g=.05;
+    for(let a=0;a<nx;a++)for(let b=0;b<ny;b++){
+      if(R()<.08)continue;
+      const u0=a/nx+g,u1=(a+1)/nx-g,v0=b/ny+g,v1=(b+1)/ny-g,s=[quadPt(q,u0,v0),quadPt(q,u1,v0),quadPt(q,u1,v1),quadPt(q,u0,v1)];
+      shadow+=poly(s);bPaths[Math.floor(R()*BCOL.length)]+=poly(s);
+    }
+  }
+}
+el("path",{d:shadow,fill:"rgba(70,55,40,.2)",transform:"translate(3,3)"},gBlocks);
+BCOL.forEach((c,k)=>el("path",{d:bPaths[k],fill:c,stroke:"#b3ada3","stroke-width":.8},gBlocks));
+
+/* ---------- river, bridges, roads ---------- */
+el("path",{id:"riverPath",d:RIVER_D,fill:"none",stroke:"#d8cfb4","stroke-width":88,"stroke-linecap":"round"});
+el("path",{d:RIVER_D,fill:"none",stroke:"#8fbfdc","stroke-width":70});
+el("path",{d:RIVER_D,fill:"none",stroke:"#a7d3ee","stroke-width":62});
+el("path",{d:RIVER_D,fill:"none",stroke:"#bfe1f5","stroke-width":22,opacity:.7});
+const rt=el("text",{"font-size":13,"font-style":"italic",fill:"#4f7a96"});
+el("textPath",{href:"#riverPath",startOffset:"62%"},rt).textContent="Demo River";
+const gBridge=el("g",{}),gCase=el("g",{}),gInner=el("g",{}),gTraffic=el("g",{}),gDash=el("g",{});
+edges.forEach(e=>{
+  const A=nodes[e.a],B=nodes[e.b],c={x1:A.x,y1:A.y,x2:B.x,y2:B.y};
+  if(e.bridge)el("line",{...c,stroke:"#6f7b84","stroke-width":e.art?32:21},gBridge);
+  el("line",{...c,stroke:e.art?"#e0b552":"#c9c4ba","stroke-width":e.art?24:14,"stroke-linecap":"round"},gCase);
+  el("line",{...c,stroke:e.art?"#fff6d6":"#fff","stroke-width":e.art?20:10.5,"stroke-linecap":"round"},gInner);
+  e.line=el("line",{...c,"stroke-width":e.art?8:4.5,"stroke-linecap":"round",opacity:.92},gTraffic);
+  if(e.art)el("line",{...c,stroke:"#fff","stroke-width":1.3,"stroke-dasharray":"6 8",opacity:.9},gDash);
+});
+const gLab=el("g",{});
+function label(a,b,text){
+  const o=adj[a].find(o=>o.to===b);if(!o)return;
+  const A=nodes[a],B=nodes[b],mx=(A.x+B.x)/2,my=(A.y+B.y)/2;let ang=Math.atan2(B.y-A.y,B.x-A.x)*180/Math.PI;if(ang>90||ang<-90)ang+=180;
+  el("text",{x:mx,y:my+3.5,"text-anchor":"middle","font-size":10.5,"font-weight":600,fill:"#6a5a2c","paint-order":"stroke",stroke:"#fff6d6","stroke-width":3,transform:`rotate(${ang.toFixed(1)} ${mx} ${my})`},gLab).textContent=text;
+}
+ARTROWS.forEach(j=>[2,15].forEach(i=>label(id(i,j),id(i+1,j),ROWNAME[j])));
+ARTCOLS.forEach(i=>[2,9].forEach(j=>label(id(i,j),id(i,j+1),COLNAME[i])));
+const jname=k=>{const n=nodes[k];return(COLNAME[n.i]||"Cross St "+(n.i+1))+" & "+(ROWNAME[n.j]||"Lane "+(n.j+1))};
+
+/* ---------- route lines ---------- */
+const altLine=el("polyline",{fill:"none",stroke:"#7b8a94","stroke-width":6,"stroke-dasharray":"2 10","stroke-linecap":"round","stroke-linejoin":"round"});
+const routeBase=el("polyline",{fill:"none",stroke:"#2563eb","stroke-width":13,opacity:.4,"stroke-linecap":"round","stroke-linejoin":"round"});
+const routeFlow=el("polyline",{fill:"none",stroke:"#fff","stroke-width":4,"stroke-dasharray":"14 14","stroke-linecap":"round","stroke-linejoin":"round",class:"flow"});
+
+/* ---------- ordinary cars (their number follows the density) ---------- */
+const gCars=el("g",{}),cars=[],CARCOL=["#e34b4b","#2f6fdb","#f2b632","#3a3f47","#ffffff","#7a4fd1","#2fa36b","#d9dde0"];
+let carSeq=0;
+function spawnCar(e,fade){
+  if(cars.length>=MAXCARS)return;
+  const rev=Math.random()<.5,r=el("rect",{width:9,height:5,x:-4.5,y:-2.5,rx:1.5,class:"car",fill:CARCOL[carSeq++%CARCOL.length],stroke:"#2b2f33","stroke-width":.7},gCars);
+  if(fade){r.style.opacity=0;requestAnimationFrame(()=>requestAnimationFrame(()=>r.style.opacity=1))}
+  cars.push({e,from:rev?e.b:e.a,to:rev?e.a:e.b,s:Math.random()*e.len,k:.8+Math.random()*.35,el:r});
+}
+function killCar(c){const k=cars.indexOf(c);if(k>=0)cars.splice(k,1);c.el.style.opacity=0;setTimeout(()=>c.el.remove(),520)}
+function syncEdge(e,exact,list){
+  const mine=(list||cars.filter(c=>c.e===e)).slice();let n=mine.length;
+  while(n<e.want&&cars.length<MAXCARS){spawnCar(e,true);n++}
+  const lim=exact?e.want:e.want+1;
+  while(n>lim){killCar(mine.splice(Math.floor(Math.random()*mine.length),1)[0]);n--}
+}
+function moveCars(dt){
+  edges.forEach(e=>e._c.length=0);cars.forEach(c=>c.e._c.push(c));
+  for(const c of cars){
+    const e=c.e;let v=spd(e)*.5*c.k;const rem=e.len-c.s,sg=sig[c.to];
+    if(sg&&(sg.color==="red"||(sg.pre&&!rEdges.has(c.e)))&&rem<20)v=0;
+    if(sg&&sg.color==="amber"&&rem<30)v*=.4;
+    if(v>0)for(const o of e._c){if(o!==c&&o.to===c.to&&o.s>c.s&&o.s-c.s<13){v=0;break}}
+    c.s+=v*dt;
+    if(c.s>=e.len){
+      const opts=adj[c.to].filter(o=>o.e!==e),list=opts.length?opts:adj[c.to];let tot=0;
+      const w=list.map(o=>{const x=.3+o.e.want+o.e.dens*2;tot+=x;return x});
+      let r=Math.random()*tot,o=list[list.length-1];for(let q=0;q<list.length;q++){r-=w[q];if(r<=0){o=list[q];break}}
+      c.from=c.to;c.to=o.to;c.e=o.e;c.s=0;
+    }
+    const A=nodes[c.from],B=nodes[c.to],f=c.s/c.e.len,dx=B.x-A.x,dy=B.y-A.y,L=Math.hypot(dx,dy),off=c.e.art?6:3.8;
+    c.el.setAttribute("transform",`translate(${f1(A.x+dx*f+dy/L*off)},${f1(A.y+dy*f-dx/L*off)}) rotate(${Math.round(Math.atan2(dy,dx)*180/Math.PI)})`);
+  }
+}
+
+/* ---------- traffic signals ---------- */
+const sig=nodes.map((n,k)=>{
+  if(adj[k].length<3)return null;
+  const g=el("g",{});
+  el("rect",{x:-6,y:-6,width:12,height:12,rx:3,fill:"#111",stroke:"#fff","stroke-width":1},g);
+  const c=el("circle",{r:4,fill:"#ef4444"},g);
+  const s={c,g,x:n.x+13,y:n.y-13,color:"red",phase:R()*16,onRoute:false};setSig(s);return s;
+});
+function setSig(s){s.g.setAttribute("transform",`translate(${s.x},${s.y}) scale(${s.onRoute?1.7:1})`)}
+
+/* ---------- hospitals and pickup pins ---------- */
+const HOSP=[{n:"Apollo Care Hospital",k:id(7,1)},{n:"Riverside Trauma Centre",k:id(12,5)},{n:"Sunrise Heart Institute",k:id(18,5)},{n:"Metro Children's Hospital",k:id(3,12)},{n:"North Gate Medical College",k:id(15,12)},{n:"Harbour View Hospital",k:id(20,10)}];
+[[["general","cardiac"],4],[["trauma"],2],[["cardiac"],3],[["paediatric","general"],5],[["general","trauma"],6],[["general"],1]].forEach((x,i)=>{HOSP[i].sp=x[0];HOSP[i].beds=x[1]});
+$("hosp").add(new Option("Auto: fastest hospital (live)","auto"));
+HOSP.forEach((h,i)=>{
+  const n=nodes[h.k],g=el("g",{class:"hosp",transform:`translate(${n.x},${n.y})`});
+  h.ring=el("circle",{r:27,fill:"none",stroke:"#2563eb","stroke-width":3,opacity:0},g);
+  el("rect",{x:-16,y:-16,width:32,height:32,rx:6,fill:"#fff",stroke:"#d33","stroke-width":2},g);
+  el("path",{d:"M-3 -9h6v6h6v6h-6v6h-6v-6h-6v-6h6z",fill:"#dc2626"},g);
+  el("text",{y:-24,"text-anchor":"middle","font-size":12,"font-weight":700,fill:"#0e2230","paint-order":"stroke",stroke:"#fff","stroke-width":3},g).textContent=h.n;
+  g.addEventListener("click",()=>{if(!running){$("hosp").value=String(i);plan()}});
+  $("hosp").add(new Option(h.n,String(i)));
+});
+const PICK=[{n:"City Mall",k:id(4,2)},{n:"Railway Station",k:id(5,6)},{n:"University Campus",k:id(14,3)},{n:"Stadium Gate",k:id(2,8)},{n:"Tech Park",k:id(16,7)},{n:"Airport Terminal",k:id(19,1)},{n:"Old Town Market",k:id(7,10)},{n:"Green Residency",k:id(12,11)}];
+function makePin(name,k){
+  const n=nodes[k],g=el("g",{class:"pin"});
+  el("path",{d:"M0 0C-8 -10 -11 -15 -11 -20A11 11 0 1 1 11 -20C11 -15 8 -10 0 0Z",fill:"#f97316",stroke:"#fff","stroke-width":1.5},g);
+  el("circle",{cy:-20,r:4,fill:"#fff"},g);
+  const t=el("text",{y:-35,"text-anchor":"middle","font-size":10.5,"font-weight":700,fill:"#7a3a05","paint-order":"stroke",stroke:"#fff","stroke-width":3},g);t.textContent=name;
+  return{g,x:n.x,y:n.y,t};
+}
+PICK.forEach((p,i)=>{p.pin=makePin(p.n,p.k);p.pin.g.addEventListener("click",()=>{if(!running)selectPickup(p.k,String(i))});$("pickSel").add(new Option(p.n,String(i)))});
+let customPin=null;
+function stylePins(){
+  PICK.forEach(p=>{const s=p.k===pickupK;p.pin.g.setAttribute("transform",`translate(${p.pin.x},${p.pin.y}) scale(${s?1.3:.85})`);p.pin.g.setAttribute("opacity",s?1:.7)});
+  if(customPin){const s=customPin.k===pickupK;customPin.g.setAttribute("transform",`translate(${customPin.x},${customPin.y}) scale(${s?1.3:.85})`);customPin.g.setAttribute("opacity",s?1:.7)}
+}
+
+/* ---------- forecast zone, bases, mini-map, dispatch, IoT, compare ---------- */
+const LEAD=[120,190,320],DB={trips:0,resp:0,saved:0,pre:0};
+const zoneC=el("circle",{cx:ZONE.x,cy:ZONE.y,r:ZONE.r,fill:"rgba(239,68,68,.10)",stroke:"#ef4444","stroke-width":3,"stroke-dasharray":"10 7","pointer-events":"none"});
+const zoneT=el("text",{x:ZONE.x,y:ZONE.y-ZONE.r-8,"text-anchor":"middle","font-size":14,"font-weight":700,fill:"#b91c1c","paint-order":"stroke",stroke:"#fff","stroke-width":4,"pointer-events":"none"});
+const BASES=[{n:"Unit A",k:id(1,4)},{n:"Unit B",k:id(8,7)},{n:"Unit C",k:id(20,3)}];
+BASES.forEach(b=>{const n=nodes[b.k],g=el("g",{class:"hosp",transform:`translate(${n.x},${n.y})`});
+  b.r=el("rect",{x:-14,y:-14,width:28,height:28,rx:5,fill:"#2563eb",stroke:"#fff","stroke-width":2},g);
+  el("text",{y:6,"text-anchor":"middle","font-size":15},g).textContent="🚑";
+  el("text",{y:-20,"text-anchor":"middle","font-size":11,"font-weight":700,fill:"#0e2230","paint-order":"stroke",stroke:"#fff","stroke-width":3},g).textContent=b.n+" (click: busy/free)";
+  g.addEventListener("click",()=>{if(running)return;b.busy=!b.busy;b.r.setAttribute("fill",b.busy?"#6b7280":"#2563eb");plan()});
+});
+HOSP.forEach(h=>{const n=nodes[h.k];el("circle",{cx:n.x,cy:n.y,r:24,fill:"#dc2626"},$("miniH"))});
+const hPen=h=>(h.beds<1?1e9:0)+(h.sp.includes($("ptype").value)?0:300)+(h.beds<2?40:0);
+function dispatch(){
+  const T=dijkstra(pickupK,(e,t)=>e.len/spdAt(e,tNow+t));let b=null;
+  BASES.forEach(x=>{if(!x.busy&&T.dist[x.k]<1e9&&(!b||T.dist[x.k]<b.t))b={x,t:T.dist[x.k],prev:T.prev}});return b;
+}
+function showDisp(D){
+  const h=HOSP.find(h=>h.k===goalK);
+  $("disp").innerHTML=`<b>Dispatch</b><br>${D.x.n} sent: nearest free unit, ${Math.round(D.t)} s to patient<br>${BASES.map(b=>b.n+" "+(b.busy?"busy":"free")).join(" | ")}<br>Hospital: ${h.n} (${h.sp.join("/")}, ${h.beds} beds free)`;
+}
+function remT(){
+  const p=posAt(A.d),e=edgeBetween(path[p.seg-1],path[p.seg]);let t=(cum[p.seg]-A.d)/spdAt(e,tNow);
+  for(let k=p.seg;k<path.length-1;k++){const x=edgeBetween(path[k],path[k+1]);t+=x.len/spdAt(x,tNow+t)}
+  return t+(A.loaded?0:Math.max(0,3-A.load));
+}
+function pva(){
+  const S=A.samples,n=S.length?S[S.length-1][1]:A.eta0;
+  $("pva").textContent=`Predicted at dispatch: ${Math.round(A.eta0)} s. Projected now: ${Math.round(n)} s (${n>=A.eta0?"+":""}${Math.round(n-A.eta0)} s).`;
+  if(S.length<2){$("spark").innerHTML="";return}
+  const ys=S.map(q=>q[1]).concat(A.eta0),lo=Math.min(...ys)-5,hi=Math.max(...ys)+5,mx=S[S.length-1][0]||1,X=t=>5+290*t/mx,Y=v=>65-60*(v-lo)/(hi-lo);
+  $("spark").innerHTML=`<line x1="5" x2="295" y1="${Y(A.eta0)}" y2="${Y(A.eta0)}" stroke="#7b8a94" stroke-dasharray="4 3"/><polyline fill="none" stroke="#ffb020" stroke-width="2" points="${S.map(q=>X(q[0])+","+Y(q[1])).join(" ")}"/>`;
+}
+function dash(){$("dash").innerHTML=`Trips: ${DB.trips} | Avg response time: ${DB.trips?Math.round(DB.resp/DB.trips):0} s<br>Total time saved: ${Math.round(DB.saved)} s | Signals pre-empted: ${DB.pre}`}
+function iot(k,ahead,bad){
+  if(A.msg.has(k))return;A.msg.add(k);
+  const s=sig[k],p=posAt(A.d),m=Math.round(ahead*1.7),g=el("g",{class:"msg"});
+  el("line",{x1:p.x,y1:p.y,x2:s.x,y2:s.y,stroke:bad?"#f59e0b":"#2563eb","stroke-width":3,"stroke-dasharray":"5 4"},g);
+  el("circle",{cx:s.x,cy:s.y,r:26,fill:"none",stroke:bad?"#f59e0b":"#22c55e","stroke-width":3},g);
+  const txt=bad?`No reply from signal ${k}, fallback: slow and proceed`:`Ambulance ${m} m away, signal ${k} set to green`;
+  el("text",{x:s.x,y:s.y-34,"text-anchor":"middle","font-size":13,"font-weight":700,fill:"#0e2230","paint-order":"stroke",stroke:"#fff","stroke-width":4},g).textContent=txt;
+  setTimeout(()=>g.remove(),1700);
+  log(bad?`IoT fault: signal ${k} offline. Driver warned, ambulance slows, nearby signals alerted`:`IoT: ambulance ${m} m away, signal ${k} green, cross traffic held`);
+}
+function simulate(pth,sysOn){
+  const cm=[0];for(let k=1;k<pth.length;k++)cm.push(cm[k-1]+edgeBetween(pth[k-1],pth[k]).len);
+  let d=0,t=0,w=0,ci=1;
+  while(d<cm[cm.length-1]&&t<3000){
+    while(ci<cm.length-1&&cm[ci]<d)ci++;
+    const e=edgeBetween(pth[ci-1],pth[ci]);let v=spdT(e,tNow+t),stop=false;
+    for(let k=ci;k<pth.length-1;k++){const sg=sig[pth[k]];if(sg&&cm[k]>=d){if(!sysOn&&((tNow+t+sg.phase)%16)>=8&&cm[k]-d<26){v=0;stop=true}break}}
+    d+=v*.1;t+=.1;if(stop)w+=.1;
+  }
+  return{t,w};
+}
+function runCompare(){
+  const a=simulate(path,true),b=simulate(altFull,false),sv=b.t-a.t;
+  $("cmp").innerHTML=`<b>Same trip, with vs without the system</b><div class="cg"><div><b>Without</b><br>Shortest route, normal signals<br>${Math.round(b.t+3)} s total<br>${Math.round(b.w)} s stopped at red</div><div><b>With system</b><br>Forecast route + green corridor<br>${Math.round(a.t+3)} s total<br>0 s stopped at red</div></div><b>Time saved: ${Math.round(sv)} s (${b.t?Math.round(100*sv/b.t):0}%)</b><br>Estimate on current traffic.`;
+}
+$("btnCmp").onclick=runCompare;
+$("night").onchange=()=>setTool(tool);
+let ac,osc,gn;
+$("snd").onchange=()=>{if($("snd").checked){ac=ac||new AudioContext();osc=ac.createOscillator();gn=ac.createGain();osc.type="sawtooth";gn.gain.value=0;osc.connect(gn);gn.connect(ac.destination);osc.start()}else if(osc){osc.stop();osc=null}};
+$("mini").onclick=e=>{const r=$("mini").getBoundingClientRect();$("follow").checked=false;cam.x=(e.clientX-r.left)/r.width*VW-cam.w/2;cam.y=(e.clientY-r.top)/r.height*VH-cam.h/2;clampCam();applyCam()};
+$("btnDemo").onclick=()=>{
+  if(running)return;
+  $("preempt").checked=$("pred").checked=$("follow").checked=$("fail").checked=true;$("sev").value="2";$("ptype").value="cardiac";$("hosp").value="auto";
+  selectPickup(PICK[1].k,"1");setStatus("Demo: cardiac emergency at the Railway Station, critical severity.");
+  setTimeout(()=>$("btnGo").click(),1500);
+  setTimeout(()=>{if(!running)return;const p=posAt(Math.min(A.d+400,cum[cum.length-1]));$("brush").value=170;for(let i=0;i<4;i++)paint(p.x,p.y,1,.5);log("Demo: accident jam ahead, rerouting")},14000);
+  const iv=setInterval(()=>{if(!running&&A&&A.d>0){clearInterval(iv);runCompare()}},1000);
+};
+
+/* ---------- ambulance + brush ---------- */
+const amb=el("g",{});
+el("circle",{r:26,class:"siren",opacity:.28},amb);
+el("rect",{x:-15,y:-8,width:30,height:16,rx:4,fill:"#fff",stroke:"#333","stroke-width":1.5},amb);
+el("path",{d:"M-2 -5h4v3h3v4h-3v3h-4v-3h-3v-4h3z",fill:"#dc2626"},amb);
+el("rect",{x:6,y:-6,width:7,height:12,rx:2,fill:"#9ec9e8"},amb);
+el("rect",{x:-2,y:-10,width:6,height:3,rx:1,class:"siren"},amb);
+const brushC=el("circle",{r:100,display:"none","pointer-events":"none","stroke-width":2,"stroke-dasharray":"6 5"});
+
+/* ---------- routing ---------- */
+let pickupK=PICK[0].k,goalK=HOSP[0].k,path=[],altPath=[],cum=[],running=false,tNow=0,A=null,pkIdx=0,altFull=[],rEdges=new Set();
+function dijkstra(s,cost,blocked){
+  const n=nodes.length,dist=new Array(n).fill(1e9),prev=new Array(n).fill(-1),done=new Array(n).fill(false);dist[s]=0;
+  for(;;){let u=-1;for(let k=0;k<n;k++)if(!done[k]&&dist[k]<1e9&&(u<0||dist[k]<dist[u]))u=k;
+    if(u<0)break;done[u]=true;
+    adj[u].forEach(o=>{if(blocked&&blocked.has(o.to))return;const d=dist[u]+cost(o.e,dist[u]);if(d<dist[o.to]){dist[o.to]=d;prev[o.to]=u}})}
+  return{dist,prev};
+}
+function pathTo(prev,g){const p=[];for(let k=g;k>=0;k=prev[k])p.unshift(k);return p}
+const timeOf=p=>{let t=0;for(let k=0;k<p.length-1;k++){const e=edgeBetween(p[k],p[k+1]);t+=e.len/spd(e)}return t};
+const pts=p=>p.map(k=>f1(nodes[k].x)+","+f1(nodes[k].y)).join(" ");
+const setStatus=t=>$("status").textContent=t;
+const hName=k=>HOSP.find(h=>h.k===k).n;
+function log(m){const li=document.createElement("li");li.textContent=(A&&running?Math.round(A.time)+" s  ":"")+m;$("log").prepend(li);while($("log").children.length>7)$("log").lastChild.remove()}
+
+/* best hospital + route from node k (forecast-aware, severity/type/beds aware in Auto) */
+function solveFrom(k,blocked,off){
+  off=off||0;const sel=$("hosp").value,auto=sel==="auto",cands=auto?HOSP:[HOSP[+sel]];
+  const T=dijkstra(k,(e,t)=>e.len/spdAt(e,tNow+off+t),blocked);let best=null;
+  cands.forEach(h=>{if(T.dist[h.k]>=1e9)return;const pen=auto?hPen(h):0;if(pen>=1e9)return;const sc=T.dist[h.k]+pen;if(!best||sc<best.s)best={h,t:T.dist[h.k],s:sc}});
+  if(!best)return null;
+  const L=dijkstra(k,e=>e.len,blocked);
+  return{path:pathTo(T.prev,best.h.k),goal:best.h.k,t:best.t,altPath:pathTo(L.prev,best.h.k)};
+}
+function rebuildCum(){cum=[0];for(let k=1;k<path.length;k++)cum.push(cum[k-1]+edgeBetween(path[k-1],path[k]).len)}
+function markSignals(){
+  sig.forEach(s=>{if(s){s.onRoute=false;setSig(s)}});
+  path.slice(1,-1).forEach(k=>{if(sig[k]){sig[k].onRoute=true;setSig(sig[k])}});
+  rEdges=new Set();for(let q=0;q<path.length-1;q++)rEdges.add(edgeBetween(path[q],path[q+1]));
+  HOSP.forEach(h=>h.ring.setAttribute("opacity",h.k===goalK?1:0));
+}
+function drawRoute(){
+  let s;
+  if(running&&A){const p=posAt(A.d);s=f1(p.x)+","+f1(p.y)+" "+pts(path.slice(p.seg))}else s=pts(path);
+  routeBase.setAttribute("points",s);routeFlow.setAttribute("points",s);$("miniR").setAttribute("points",s);
+}
+function posAt(d){
+  let k=1;while(k<cum.length-1&&cum[k]<d)k++;
+  if(cum.length<2)return{x:nodes[path[0]].x,y:nodes[path[0]].y,ang:0,seg:1};
+  const a=nodes[path[k-1]],b=nodes[path[k]],f=clamp((d-cum[k-1])/(cum[k]-cum[k-1]),0,1);
+  return{x:a.x+(b.x-a.x)*f,y:a.y+(b.y-a.y)*f,ang:Math.atan2(b.y-a.y,b.x-a.x)*180/Math.PI,seg:k};
+}
+function placeAmb(){const p=posAt(A.d);amb.setAttribute("transform",`translate(${p.x},${p.y}) rotate(${p.ang})`);$("miniA").setAttribute("cx",p.x);$("miniA").setAttribute("cy",p.y);return p}
+
+function plan(keepLog){
+  if(!running){ZONE.start=tNow+22;if(ZONE.on){edges.forEach(e=>e.dens=e._o);ZONE.on=false;applyAll(false)}sig.forEach(s=>{if(s)s.fail=false})}
+  const D=dispatch();if(!D){setStatus("All ambulances are marked busy.");return}
+  const sol=solveFrom(pickupK,null,D.t);if(!sol){setStatus("No route found from this pickup point.");return}
+  const head=pathTo(D.prev,D.x.k).reverse();
+  path=head.concat(sol.path.slice(1));pkIdx=head.length-1;goalK=sol.goal;altFull=head.concat(sol.altPath.slice(1));
+  rebuildCum();markSignals();
+  altLine.setAttribute("points",pts(altFull));altLine.style.display=(altFull.join()===path.join())?"none":"";
+  const eta=D.t+3+sol.t;
+  $("sDest").textContent=hName(goalK);$("sFast").textContent=Math.round(eta)+" s";$("sShort").textContent=Math.round(timeOf(altFull)+3)+" s";
+  A={d:0,cleared:0,wait:0,time:0,passed:new Set(),heavy:false,msg:new Set(),pk:cum[pkIdx],loaded:false,load:0,resp:null,eta0:eta,samples:[],sT:0,base:0};
+  placeAmb();drawRoute();stylePins();showDisp(D);pva();
+  if(!keepLog)$("log").innerHTML="";
+  $("sSpeed").textContent=0;$("sSig").textContent=0;$("sWait").textContent="0 s";$("sTime").textContent="0 s";$("btnGo").disabled=false;
+  const gain=timeOf(altFull)+3-eta;
+  setStatus(`${D.x.n} will pick up the patient, then go to ${hName(goalK)}. ETA ${Math.round(eta)} s.`+(gain>1?` ${Math.round(gain)} s quicker than the shortest-distance route.`:"")+" Press Start ambulance.");
+}
+/* re-route while driving: keep the current road, re-plan from the next junction (patient leg first if not yet loaded) */
+function replan(){
+  if(!running){plan(true);return}
+  const p=posAt(A.d),k=p.seg,N=path[k],prefix=path.slice(0,k+1),blk=new Set(prefix.slice(0,-1)),off=(cum[k]-A.d)/spdAt(edgeBetween(path[k-1],N),tNow);
+  let head=[N],t0=off;
+  if(!A.loaded){const T=dijkstra(N,(e,t)=>e.len/spdAt(e,tNow+off+t),blk);if(T.dist[pickupK]>=1e9)return;head=pathTo(T.prev,pickupK);t0=off+T.dist[pickupK]+3}
+  const sol=solveFrom(head[head.length-1],A.loaded?blk:null,t0)||solveFrom(head[head.length-1],null,t0);if(!sol)return;
+  const np=prefix.concat(head.slice(1),sol.path.slice(1));
+  if(np.join()!==path.join()){
+    const oldT=remT(),oldGoal=goalK;path=np;pkIdx=k+head.length-1;goalK=sol.goal;rebuildCum();A.pk=cum[pkIdx];markSignals();
+    altLine.setAttribute("points",pts(np));altLine.style.display="none";
+    const saved=Math.round(oldT-remT());
+    log(saved>0?`Traffic changed: new route found, saves about ${saved} s`:"Traffic changed: route updated");
+    if(goalK!==oldGoal){log("Destination switched to "+hName(goalK));$("sDest").textContent=hName(goalK)}
+  }
+  $("sFast").textContent=Math.round(remT())+" s left";
+}
+let rpT=null;function scheduleReplan(){if(rpT)return;rpT=setTimeout(()=>{rpT=null;replan()},120)}
+
+/* ---------- traffic editing ---------- */
+function refreshEdge(e,exact){e.line.setAttribute("stroke",densColor(e.dens));e.want=wantOf(e);syncEdge(e,exact)}
+function randomTraffic(){
+  edges.forEach(e=>e.dens=Math.random()*.08);
+  for(let n=0;n<11;n++){
+    const c=edges[Math.floor(Math.random()*edges.length)],r=70+Math.random()*120,peak=.5+Math.random()*.5;
+    edges.forEach(e=>{const d=segDist(c.mid.x,c.mid.y,e);if(d<r)e.dens=Math.max(e.dens,peak*(1-d/r))});
+  }
+}
+function applyAll(initial){
+  if(initial){cars.forEach(c=>c.el.remove());cars.length=0}
+  edges.forEach(e=>{e.line.setAttribute("stroke",densColor(e.dens));e.want=wantOf(e);if(initial){for(let n=0;n<e.want;n++)spawnCar(e,false)}else syncEdge(e,true)});
+}
+function paint(mx,my,dir,strength){
+  const r=+$("brush").value;
+  edges.forEach(e=>{
+    const d=segDist(mx,my,e);if(d>=r)return;
+    e.dens=clamp(e.dens+dir*strength*(.35+.65*(1-d/r)),0,1);refreshEdge(e,true);
+  });
+  scheduleReplan();
+}
+$("btnRandom").onclick=()=>{randomTraffic();applyAll(false);scheduleReplan()};
+$("btnClear").onclick=()=>{edges.forEach(e=>e.dens=.02);applyAll(false);scheduleReplan()};
+
+/* ---------- tools, camera, pointer ---------- */
+let tool="pickup";
+const HINTS={pickup:"Click the map to choose a pickup point, or click an orange pin. Click a hospital to set the destination.",add:"Click or drag on the map to add traffic. More cars appear and the route adapts.",reduce:"Click or drag on the map to reduce traffic. Cars disappear and the route adapts.",pan:"Drag to move the map. Scroll to zoom."};
+function setTool(t){
+  tool=t;svg.setAttribute("class","t-"+t+($("night").checked?" night":""));$("hint").textContent=HINTS[t];
+  document.querySelectorAll("[data-tool]").forEach(b=>b.setAttribute("aria-pressed",b.dataset.tool===t));
+  const add=t==="add";if(t==="add"||t==="reduce"){brushC.setAttribute("fill",add?"rgba(239,68,68,.16)":"rgba(34,197,94,.16)");brushC.setAttribute("stroke",add?"#ef4444":"#22c55e")}else brushC.setAttribute("display","none");
+}
+document.querySelectorAll("[data-tool]").forEach(b=>b.onclick=()=>setTool(b.dataset.tool));
+$("brush").oninput=()=>brushC.setAttribute("r",$("brush").value);
+
+const cam={x:0,y:0,w:VW,h:VH};
+const applyCam=()=>{svg.setAttribute("viewBox",`${f1(cam.x)} ${f1(cam.y)} ${f1(cam.w)} ${f1(cam.h)}`);const v=$("miniV");v.setAttribute("x",f1(cam.x));v.setAttribute("y",f1(cam.y));v.setAttribute("width",f1(cam.w));v.setAttribute("height",f1(cam.h))};
+function clampCam(){cam.x=clamp(cam.x,0,VW-cam.w);cam.y=clamp(cam.y,0,VH-cam.h)}
+function zoomAt(f,px,py){const nw=clamp(cam.w*f,300,VW),nh=nw*VH/VW;cam.x=px-(px-cam.x)*(nw/cam.w);cam.y=py-(py-cam.y)*(nh/cam.h);cam.w=nw;cam.h=nh;clampCam();applyCam()}
+function toMap(e){const p=svg.createSVGPoint();p.x=e.clientX;p.y=e.clientY;return p.matrixTransform(svg.getScreenCTM().inverse())}
+function nearestNode(m){let best=0,bd=1e9;nodes.forEach((n,k)=>{const q=Math.hypot(n.x-m.x,n.y-m.y);if(q<bd){bd=q;best=k}});return best}
+function selectPickup(k,val){pickupK=k;if(val!==undefined)$("pickSel").value=val;plan()}
+let drag=null;
+svg.addEventListener("pointerdown",e=>{
+  if(e.button!==0)return;
+  const painting=(tool==="add"||tool==="reduce")&&!e.shiftKey;
+  drag={x:e.clientX,y:e.clientY,moved:false,paint:painting};
+  if(painting){const m=toMap(e);paint(m.x,m.y,tool==="add"?1:-1,.3);svg.setPointerCapture(e.pointerId)}
+});
+svg.addEventListener("pointermove",e=>{
+  const m=toMap(e);
+  if(tool==="add"||tool==="reduce"){brushC.setAttribute("display","");brushC.setAttribute("cx",m.x);brushC.setAttribute("cy",m.y);brushC.setAttribute("r",$("brush").value)}
+  if(!drag)return;
+  const dx=e.clientX-drag.x,dy=e.clientY-drag.y;
+  if(drag.paint){if(Math.hypot(dx,dy)>8){paint(m.x,m.y,tool==="add"?1:-1,.1);drag.x=e.clientX;drag.y=e.clientY}return}
+  if(!drag.moved&&Math.hypot(dx,dy)<5)return;
+  if(!drag.moved){drag.moved=true;svg.setPointerCapture(e.pointerId);$("follow").checked=false}
+  const k=svg.getScreenCTM().a;cam.x-=dx/k;cam.y-=dy/k;clampCam();applyCam();drag.x=e.clientX;drag.y=e.clientY;
+});
+svg.addEventListener("pointerleave",()=>{if(!drag)brushC.setAttribute("display","none")});
+svg.addEventListener("pointerup",e=>{
+  const d=drag;drag=null;if(!d||d.paint||d.moved||tool!=="pickup"||e.target.closest(".hosp,.pin"))return;
+  if(running){setStatus("Pickup cannot be changed while the ambulance is driving. Traffic can still be edited.");return}
+  const k=nearestNode(toMap(e));
+  if(HOSP.some(h=>h.k===k)){setStatus("That junction is a hospital. Choose a different pickup point.");return}
+  if(!customPin){customPin={k,g:null};$("pickSel").add(new Option("Custom (selected on map)","custom"))}
+  if(customPin.g)customPin.g.remove();
+  const np=makePin("Custom pickup",k);customPin={k,...np};svg.insertBefore(np.g,amb);
+  selectPickup(k,"custom");
+});
+svg.addEventListener("wheel",e=>{e.preventDefault();const m=toMap(e);$("follow").checked=false;zoomAt(e.deltaY<0?.85:1.18,m.x,m.y)},{passive:false});
+$("zIn").onclick=()=>{$("follow").checked=false;zoomAt(.8,cam.x+cam.w/2,cam.y+cam.h/2)};
+$("zOut").onclick=()=>{$("follow").checked=false;zoomAt(1.25,cam.x+cam.w/2,cam.y+cam.h/2)};
+$("zFit").onclick=()=>{$("follow").checked=false;cam.x=0;cam.y=0;cam.w=VW;cam.h=VH;applyCam()};
+
+/* ---------- main loop ---------- */
+let last=performance.now(),recon=0;
+function frame(now){
+  const dt=Math.min(.05,(now-last)/1000);last=now;tNow+=dt;
+  let nextSig=null;
+  if(running){const p=posAt(A.d);for(let k=p.seg;k<path.length-1;k++){if(cum[k]>=A.d&&sig[path[k]]){nextSig=k;break}}}
+  if(!ZONE.on&&ZONE.start<1e8&&tNow>=ZONE.start){ZONE.on=true;edges.forEach(e=>{e._o=e.dens;e.dens=Math.max(e.dens,e.zw)});applyAll(false);scheduleReplan();log("Actual traffic: school-closing jam has started")}
+  zoneT.textContent=ZONE.on?"School closing: jam active":"Forecast: school-closing jam in "+Math.max(0,Math.round(ZONE.start-tNow))+" s";
+  sig.forEach((s,k)=>{
+    if(!s)return;
+    let c=((tNow+s.phase)%16)<8?"green":"red";s.pre=false;
+    if(s.fail){c="amber";if(running&&s.onRoute&&!A.passed.has(k)){const ci=path.indexOf(k),ah=cum[ci]-A.d;if(ah<LEAD[+$("sev").value]&&ah>0)iot(k,ah,true)}}
+    else if(running&&$("preempt").checked&&s.onRoute&&!A.passed.has(k)){const ci=path.indexOf(k);if(ci>=0){const ahead=cum[ci]-A.d;if(ahead<LEAD[+$("sev").value]&&ahead>-12){c="green";s.pre=true;iot(k,Math.max(0,ahead),false)}}}
+    if(c!==s.color){s.color=c;s.c.setAttribute("fill",c==="green"?"#22c55e":c==="amber"?"#f59e0b":"#ef4444")}
+  });
+  moveCars(dt);
+  recon+=dt;if(recon>.7){recon=0;edges.forEach(e=>syncEdge(e,false,e._c))}
+  if(running){
+    const p=posAt(A.d),e=edgeBetween(path[p.seg-1],path[p.seg]);
+    let v=spd(e),stopped=false,loading=false;
+    if(!A.loaded&&A.d>=A.pk-.5){loading=true;if(A.resp===null){A.resp=A.time;log("Reached patient, response time "+Math.round(A.time)+" s")}A.load+=dt;if(A.load>=3){A.loaded=true;log("Patient on board, heading to "+hName(goalK))}}
+    if(nextSig!==null){const sg=sig[path[nextSig]],dd=cum[nextSig]-A.d;if(sg.color==="red"&&dd<26){v=0;stopped=true}else if(sg.fail&&dd<60)v*=.35}
+    if(loading)v=0;
+    A.d=Math.min(cum[cum.length-1],A.d+v*dt);A.time+=dt;if(stopped)A.wait+=dt;
+    path.forEach((k,ci)=>{if(ci>0&&ci<path.length-1&&sig[k]&&!A.passed.has(k)&&A.d>cum[ci]+6){A.passed.add(k);if(!sig[k].fail)A.cleared++;log("Signal cleared: "+jname(k)+(sig[k].fail?" (offline, passed with caution)":", normal cycle restored"))}});
+    const heavy=e.dens>.65;if(heavy&&!A.heavy)log("Heavy congestion ahead, speed reduced");A.heavy=heavy;
+    const q=placeAmb();drawRoute();
+    A.sT+=dt;if(A.sT>=1){A.sT=0;A.samples.push([A.time,A.time+remT()]);pva()}
+    if(gn)gn.gain.value=nextSig!==null?.05*clamp(1-(cum[nextSig]-A.d)/400,.15,1):.02;if(osc)osc.frequency.value=700+250*Math.sin(tNow*6);
+    $("sSpeed").textContent=Math.round(v*.3);$("sSig").textContent=A.cleared;
+    $("sWait").textContent=Math.round(A.wait)+" s";$("sTime").textContent=Math.round(A.time)+" s";
+    setStatus(loading?"Loading the patient.":stopped?"Stopped at a red signal.":e.dens>.65?"Slowed by heavy congestion.":e.dens>.34?"Moderate congestion on this road.":"Clear road, moving at full speed.");
+    if($("follow").checked){cam.w+=(560-cam.w)*.05;cam.h=cam.w*VH/VW;cam.x+=(q.x-cam.w/2-cam.x)*.08;cam.y+=(q.y-cam.h/2-cam.y)*.08;clampCam();applyCam()}
+    if(A.d>=cum[cum.length-1]){
+      running=false;["btnGo","btnReset","pickSel","hosp"].forEach(i=>$(i).disabled=false);$("sSpeed").textContent=0;
+      const h=HOSP.find(h=>h.k===goalK);h.beds=Math.max(0,h.beds-1);
+      DB.trips++;DB.resp+=A.resp||0;DB.saved+=Math.max(0,A.base-A.time);DB.pre+=A.cleared;dash();
+      log("Arrived at "+hName(goalK));
+      setStatus(`Reached ${hName(goalK)} in ${Math.round(A.time)} s (about ${Math.round(Math.max(0,A.base-A.time))} s faster than no system). Waited ${Math.round(A.wait)} s at red lights.`);
+    }
+  }
+  if(!running&&gn)gn.gain.value=0;
+  requestAnimationFrame(frame);
+}
+
+/* ---------- controls ---------- */
+$("pickSel").onchange=()=>{const v=$("pickSel").value;if(v==="custom"&&customPin)selectPickup(customPin.k);else if(v!=="custom")selectPickup(PICK[+v].k)};
+$("hosp").onchange=()=>plan();
+$("btnReset").onclick=()=>{if(!running)plan()};
+$("btnGo").onclick=()=>{
+  if(running)return;plan();
+  A.base=simulate(altFull,false).t+3;
+  if($("fail").checked){const c=path.slice(pkIdx+1,-1).filter(k=>sig[k]);if(c.length)sig[c[Math.floor(c.length/2)]].fail=true}
+  running=true;A.passed=new Set();["btnGo","btnReset","pickSel","hosp"].forEach(i=>$(i).disabled=true);
+  log("Ambulance dispatched");setStatus("Ambulance dispatched. Add or reduce traffic and watch the route adapt.");
+};
+
+svg.appendChild(amb);svg.appendChild(brushC);
+randomTraffic();applyAll(true);setTool("pickup");plan();dash();
+{const p=nodes[pickupK];cam.w=1500;cam.h=cam.w*VH/VW;cam.x=p.x-cam.w/2;cam.y=p.y-cam.h/2;clampCam();applyCam()}
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
